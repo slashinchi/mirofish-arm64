@@ -21,6 +21,8 @@ on:
 env:
   REGISTRY: ghcr.io
   GITHUB_USER: slashinchi
+  # 强制使用 Node.js 24，消除弃用警告
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 # 并发控制：同一分支/标签的新构建会取消正在进行的构建
 concurrency:
