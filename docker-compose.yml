@@ -73,6 +73,9 @@ services:
       ZEP_API_URL: http://openzep:8000
     volumes:
       - ./uploads:/app/backend/uploads
+    # Fix frontend API baseURL for remote access
+    command: >
+      bash -c "sed -i \"s|'http://localhost:5001'|''|g\" /app/frontend/src/api/index.js && npm run dev"
     networks:
       - mirofish-net
 
