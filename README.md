@@ -1,65 +1,85 @@
-# MiroFish ARM64 Deployment
+# MiroFish ARM64
 
-This repository contains ARM64-compatible Docker configurations for deploying MiroFish with OpenZep.
+[![Build](https://github.com/slashinchi/mirofish-arm64/actions/workflows/build.yml/badge.svg)](https://github.com/slashinchi/mirofish-arm64/actions/workflows/build.yml)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## Architecture
+为 Apple Silicon (M1/M2/M3/M4) 优化的 MiroFish 保险客户访谈模拟系统。
 
-- **MiroFish**: AI-powered insurance customer interview prediction system
-- **OpenZep**: Self-hosted Zep Cloud alternative (knowledge graph storage)
-- **Neo4j**: Graph database (bundled with OpenZep)
+## 这是什么
 
-## Prerequisites
+MiroFish 是一个 AI 驱动的保险客户访谈模拟系统，帮助保险从业者通过模拟对话提升客户沟通技巧。本项目提供 ARM64 架构的 Docker 镜像，让 Mac 用户无需复杂配置即可本地运行。
 
-- Mac with Apple Silicon (M1/M2/M3/M4) or other ARM64 device
-- OrbStack or Docker Desktop
-- OpenAI-compatible API (e.g., Alibaba Qwen via 阿里百炼)
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  MiroFish   │────▶│   OpenZep   │────▶│   Neo4j     │
+│   (Web UI)  │     │(知识图谱API) │     │  (图数据库)  │
+└─────────────┘     └─────────────┘     └─────────────┘
+       │
+       ▼
+┌─────────────┐
+│  阿里百炼    │
+│  qwen-plus  │
+└─────────────┘
+```
 
-## Quick Start
+## 快速开始
 
 ```bash
-# 1. Clone repository
+# 1. 克隆仓库
 git clone https://github.com/slashinchi/mirofish-arm64.git
 cd mirofish-arm64
 
-# 2. Create data directories
+# 2. 准备数据目录
 mkdir -p data/neo4j data/openzep uploads
 
-# 3. Configure environment
+# 3. 配置环境变量
 cp .env.example .env
-# Edit .env with your API keys
+# 编辑 .env，填入阿里百炼 API Key
 
-# 4. Start services
+# 4. 启动服务
 docker compose up -d
 
-# 5. Access MiroFish
+# 5. 访问系统
 open http://localhost:3000
 ```
 
-## Documentation
+## 系统要求
 
-- [详细部署指南](docs/deployment.md) - 完整部署步骤和常见问题
+- **硬件**: Mac with Apple Silicon (M1/M2/M3/M4) 或 ARM64 Linux
+- **内存**: 8GB 最低，16GB 推荐
+- **Docker**: OrbStack (推荐) 或 Docker Desktop
 
-## Ports
+## 服务端口
 
-| Port | Service | Description |
-|------|---------|-------------|
-| 3000 | MiroFish Frontend | Web UI |
-| 5001 | MiroFish Backend | API |
-| 8000 | OpenZep | Knowledge Graph API |
-| 7474 | Neo4j HTTP | Web Console |
-| 7687 | Neo4j Bolt | Database connection |
+| 端口 | 服务 | 说明 |
+|------|------|------|
+| 3000 | MiroFish | Web 界面 |
+| 5001 | MiroFish API | 后端服务 |
+| 8000 | OpenZep | 知识图谱服务 |
+| 7474 | Neo4j | 图数据库控制台 |
 
-## Image Building
+## 文档
 
-Images are automatically built via GitHub Actions:
+- [详细部署指南](docs/deployment.md) - 完整部署步骤、故障排查、FAQ
 
-- **Trigger**: Push tag `v*` or manual workflow dispatch
-- **Registry**: `ghcr.io/slashinchi/mirofish` and `ghcr.io/slashinchi/openzep`
-- **Platform**: `linux/arm64`
+## 技术栈
 
-## License
+- **MiroFish**: AI 保险访谈模拟系统 ([上游仓库](https://github.com/666ghj/MiroFish))
+- **OpenZep**: 自托管知识图谱服务 ([上游仓库](https://github.com/N1nEmAn/openzep))
+- **Neo4j**: 图数据库存储
+- **阿里百炼**: LLM API (qwen-plus)
 
-This repository contains deployment configurations only. MiroFish and OpenZep have their own licenses:
+## 镜像
 
-- MiroFish: https://github.com/666ghj/MiroFish
-- OpenZep: https://github.com/N1nEmAn/openzep
+预构建镜像托管在 GitHub Container Registry:
+
+```
+ghcr.io/slashinchi/mirofish:latest
+ghcr.io/slashinchi/openzep:latest
+```
+
+镜像每周自动更新，支持 `linux/arm64` 平台。
+
+## 许可证
+
+本项目仅包含部署配置，采用 MIT 许可证。MiroFish 和 OpenZep 遵循各自上游仓库的许可证。
