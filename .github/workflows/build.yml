@@ -46,13 +46,9 @@ jobs:
       - name: Check MiroFish upstream
         id: check-mirofish
         run: |
-          # 获取上游最新 commit
           UPSTREAM_SHA=$(curl -s "https://api.github.com/repos/666ghj/MiroFish/commits/main" | jq -r '.sha')
           echo "upstream_mirofish_sha=$UPSTREAM_SHA" >> $GITHUB_OUTPUT
-
-          # 获取上次构建记录的上游 commit（从 git tag 或文件读取）
           LAST_BUILD_SHA=$(git log --grep="mirofish-upstream:" --oneline -1 | grep -oP 'mirofish-upstream:\K[a-f0-9]+' || echo "")
-
           if [ "$UPSTREAM_SHA" != "$LAST_BUILD_SHA" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
             echo "MiroFish upstream has new commits: $UPSTREAM_SHA"
@@ -66,9 +62,7 @@ jobs:
         run: |
           UPSTREAM_SHA=$(curl -s "https://api.github.com/repos/N1nEmAn/openzep/commits/main" | jq -r '.sha')
           echo "upstream_openzep_sha=$UPSTREAM_SHA" >> $GITHUB_OUTPUT
-
           LAST_BUILD_SHA=$(git log --grep="openzep-upstream:" --oneline -1 | grep -oP 'openzep-upstream:\K[a-f0-9]+' || echo "")
-
           if [ "$UPSTREAM_SHA" != "$LAST_BUILD_SHA" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
             echo "OpenZep upstream has new commits: $UPSTREAM_SHA"
@@ -80,11 +74,9 @@ jobs:
       - name: Build decision
         id: decision
         run: |
-          # 如果是 tag 推送或手动触发强制构建，直接构建
           if [ "${{ github.event_name }}" == "push" ] || [ "${{ inputs.force_build }}" == "true" ]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
             echo "Building due to tag push or force build"
-          # 如果是定时触发，检查上游是否有更新
           elif [ "${{ steps.check-mirofish.outputs.changed }}" == "true" ] || [ "${{ steps.check-openzep.outputs.changed }}" == "true" ]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
             echo "Building due to upstream changes"
@@ -163,15 +155,13 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,scope=${{ matrix.name }},mode=max
 
-      - name: Get image digest
-        id: digest
+      - name: Show build result
         run: |
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ env.REGISTRY }}/${{ env.GITHUB_USER }}/${{ matrix.image }}:latest 2>/dev/null || echo "N/A")
-          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
-
-      - name: Save build info
-        run: |
-          echo "${{ matrix.name }}-upstream-sha=${{ steps.upstream-sha.outputs.sha }}" >> $GITHUB_ENV
+          echo "### ${{ matrix.name }} 镜像构建完成" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Digest**: \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tags**: \`${{ steps.meta.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Upstream**: ${{ steps.upstream-sha.outputs.sha }}" >> $GITHUB_STEP_SUMMARY
 
     outputs:
       mirofish_upstream_sha: ${{ steps.upstream-sha.outputs.sha }}
@@ -189,8 +179,8 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| 镜像 | 标签 | 地址 |" >> $GITHUB_STEP_SUMMARY
           echo "|------|------|------|" >> $GITHUB_STEP_SUMMARY
-          echo "| MiroFish | latest, arm64 | \`${{ env.REGISTRY }}/${{ env.GITHUB_USER }}/mirofish:latest\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| OpenZep | latest, arm64 | \`${{ env.REGISTRY }}/${{ env.GITHUB_USER }}/openzep:latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| MiroFish | latest, arm64 | \`ghcr.io/slashinchi/mirofish:latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| OpenZep | latest, arm64 | \`ghcr.io/slashinchi/openzep:latest\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 上游仓库状态" >> $GITHUB_STEP_SUMMARY
           echo "- MiroFish: ${{ needs.check-upstream.outputs.mirofish_changed == 'true' && '有更新 ✅' || '无变化' }}" >> $GITHUB_STEP_SUMMARY
@@ -198,7 +188,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 触发方式" >> $GITHUB_STEP_SUMMARY
           echo "- 事件类型: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- 触发时间: ${{ github.event.head_commit.timestamp || 'N/A' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 触发时间: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
 
   # 跳过构建时的摘要
   skip-summary:
