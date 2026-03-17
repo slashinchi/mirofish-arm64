@@ -55,8 +55,18 @@ open http://localhost:3000
 |------|------|------|
 | 3000 | MiroFish | Web 界面 |
 | 5001 | MiroFish API | 后端服务 |
-| 8000 | OpenZep | 知识图谱服务 |
-| 7474 | Neo4j | 图数据库控制台 |
+| 8000 | OpenZep | 知识图谱服务，可访问 `/docs` 查看 API 文档 |
+| 7474 | Neo4j | 图数据库 HTTP 控制台 |
+
+## 环境变量
+
+| 变量名 | 说明 | 示例 |
+|--------|------|------|
+| `ZEP_API_URL` | OpenZep 服务地址 | `http://localhost:8000` |
+| `OPENZEP_API_KEY` | OpenZep 认证密钥 | 自定义随机字符串 |
+| `NEO4J_PASSWORD` | Neo4j 数据库密码 | 强密码 |
+| `LLM_API_KEY` | 阿里百炼 API Key | `sk-xxxxxx` |
+| `LLM_MODEL` | 模型名称 | `qwen-plus` |
 
 ## 文档
 
