@@ -109,6 +109,9 @@ vi .env
 # 阿里百炼 API Key（从控制台获取）
 LLM_API_KEY=sk-your-actual-api-key
 
+# OpenZep 服务地址
+ZEP_API_URL=http://localhost:8000
+
 # OpenZep 内部认证密钥（自定义，建议 32 位以上随机字符串）
 OPENZEP_API_KEY=your-random-secret-key-min-32-chars
 
@@ -125,6 +128,8 @@ LLM_MODEL=qwen-plus
 # 日志级别（debug/info/warning/error）
 LOG_LEVEL=info
 ```
+
+> **注意**：MiroFish 使用 zep-cloud SDK 原生支持的 `ZEP_API_URL` 环境变量。SDK 会自动拼接 `/api/v2` 路径，无需手动添加。
 
 ---
 
@@ -202,7 +207,10 @@ curl -s http://localhost:5001
 # OpenZep 健康检查
 curl -s http://localhost:8000/healthz
 
-# Neo4j HTTP 接口
+# OpenZep API 文档
+curl -s http://localhost:8000/docs
+
+# Neo4j HTTP 控制台
 curl -s http://localhost:7474
 ```
 
@@ -211,6 +219,7 @@ curl -s http://localhost:7474
 打开浏览器访问各服务：
 
 - **MiroFish**: http://localhost:3000
+- **OpenZep API 文档**: http://localhost:8000/docs
 - **Neo4j Console**: http://localhost:7474
   - 用户名: `neo4j`
   - 密码: `.env` 中设置的 `NEO4J_PASSWORD`
@@ -428,6 +437,16 @@ docker compose logs -f mirofish
 docker compose logs -f openzep
 docker compose logs -f neo4j
 ```
+
+### Q7: OpenZep 的 API 文档在哪里？
+
+OpenZep 提供自动生成的 API 文档，启动后访问：
+
+```
+http://localhost:8000/docs
+```
+
+文档包含完整的 API 端点说明和请求示例。
 
 ---
 
