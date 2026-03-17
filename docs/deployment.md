@@ -6,6 +6,7 @@
 
 - [前置准备](#前置准备)
 - [环境配置](#环境配置)
+- [阿里百炼模型兼容性](#阿里百炼模型兼容性)
 - [部署步骤](#部署步骤)
 - [服务验证](#服务验证)
 - [故障排查](#故障排查)
@@ -130,6 +131,156 @@ LOG_LEVEL=info
 ```
 
 > **注意**：MiroFish 使用 zep-cloud SDK 原生支持的 `ZEP_API_URL` 环境变量。SDK 会自动拼接 `/api/v2` 路径，无需手动添加。
+
+---
+
+## 阿里百炼模型兼容性
+
+MiroFish 使用阿里百炼（Bailian）平台提供的 LLM API。由于系统依赖 OpenZep 知识图谱服务进行结构化数据提取，对模型的响应格式有严格要求。本节详细说明模型选择的相关问题。
+
+### 响应格式支持
+
+阿里百炼 API 支持两种 `response_format` 模式：
+
+1. **json_object**: 基础 JSON 输出，不保证字段结构
+2. **json_schema**: 严格遵循 JSON Schema 定义的结构化输出（OpenZep 必需）
+
+只有支持 `json_schema` 模式的模型才能确保 OpenZep 正常工作。
+
+### 已验证模型清单
+
+#### ✅ 完全支持的模型
+
+| 模型名称 | 支持状态 | 特殊配置 | 说明 |
+|----------|----------|----------|------|
+| `glm-5` | ✅ 推荐 | 无 | 智谱 GLM 系列，稳定可靠 |
+| `glm-4.7` | ✅ 推荐 | 无 | 智谱 GLM 系列，稳定可靠 |
+| `qwen3-max-2026-01-23` | ✅ 可用 | `enable_thinking=false` | 阿里云 Qwen3 Max |
+| `qwen3.5-plus` | ✅ 可用 | `enable_thinking=false` | 阿里云 Qwen3.5 Plus |
+
+#### ⚠️ 待验证模型
+
+| 模型名称 | 支持状态 | 备注 |
+|----------|----------|------|
+| `kimi-k2.5` | 待确认 | 需要社区测试验证 |
+| `MiniMax-M2.5` | 待确认 | 需要社区测试验证 |
+
+### 模型配置详解
+
+#### GLM 系列配置（推荐）
+
+GLM 模型开箱即用，无需额外配置：
+
+```bash
+# .env 配置
+LLM_API_KEY=your-bailian-api-key
+LLM_MODEL=glm-5
+```
+
+GLM 系列模型的优势：
+- 原生支持 `json_schema` 模式
+- 无需关闭思考模式
+- 结构化输出稳定可靠
+
+#### Qwen 系列配置
+
+Qwen 系列模型需要显式关闭思考模式：
+
+```bash
+# .env 配置
+LLM_API_KEY=your-bailian-api-key
+LLM_MODEL=qwen3-max-2026-01-23
+LLM_ENABLE_THINKING=false
+```
+
+**重要**: 如果不设置 `enable_thinking=false`，Qwen 模型会输出推理过程，导致 JSON 解析失败。
+
+### 故障排查
+
+#### 症状：OpenZep 服务启动失败或知识图谱功能异常
+
+**可能原因**：
+1. 使用了不支持 `json_schema` 的模型
+2. Qwen 系列未关闭思考模式
+3. API Key 无效或额度不足
+
+**排查步骤**：
+
+1. **检查模型配置**
+   ```bash
+   # 查看当前配置的模型
+   grep LLM_MODEL .env
+   ```
+
+2. **验证 API Key**
+   ```bash
+   # 测试 API 连通性
+   curl -X POST https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation \
+     -H "Authorization: Bearer $LLM_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "model": "'$LLM_MODEL'",
+       "input": {"messages": [{"role": "user", "content": "Hello"}]},
+       "parameters": {"result_format": "json_schema"}
+     }'
+   ```
+
+3. **检查 OpenZep 日志**
+   ```bash
+   docker compose logs openzep
+   ```
+   
+   如果看到类似 `Failed to parse JSON response` 或 `Invalid schema` 的错误，说明当前模型不支持 `json_schema`。
+
+4. **切换到推荐模型**
+   
+   修改 `.env` 文件，使用已验证的推荐模型：
+   ```bash
+   LLM_MODEL=glm-5
+   ```
+   
+   然后重启服务：
+   ```bash
+   docker compose restart
+   ```
+
+#### 症状：Qwen 模型输出包含推理过程
+
+**表现**：响应中包含 `_:*` 标签或大量推理文本。
+
+**解决方案**：
+确保 `.env` 文件中包含：
+```bash
+LLM_ENABLE_THINKING=false
+```
+
+然后重启服务：
+```bash
+docker compose restart
+```
+
+### 模型选择建议
+
+| 使用场景 | 推荐模型 | 理由 |
+|----------|----------|------|
+| 追求稳定性 | `glm-5` | 无需额外配置，开箱即用 |
+| 追求性价比 | `glm-4.7` | 价格更低，功能完整 |
+| 需要最新能力 | `qwen3-max-2026-01-23` | 阿里云最新模型，需关闭思考模式 |
+| 平衡性能与成本 | `qwen3.5-plus` | 性价比较高，需关闭思考模式 |
+
+### 获取阿里百炼 API Key
+
+1. 访问 [阿里百炼控制台](https://bailian.console.aliyun.com/)
+2. 注册或登录阿里云账号
+3. 进入 "API Key 管理" 页面
+4. 创建新的 API Key
+5. 复制 Key 并粘贴到 `.env` 文件的 `LLM_API_KEY` 变量中
+
+### 相关资源
+
+- [阿里百炼官方文档](https://help.aliyun.com/document_detail/2587504.html)
+- [OpenZep 项目文档](https://github.com/OpenZep/openzep)
+- [MiroFish 问题反馈](https://github.com/slashinchi/mirofish-arm64/issues)
 
 ---
 
