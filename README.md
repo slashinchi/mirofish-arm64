@@ -3,11 +3,11 @@
 [![Build](https://github.com/slashinchi/mirofish-arm64/actions/workflows/build.yml/badge.svg)](https://github.com/slashinchi/mirofish-arm64/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-为 Apple Silicon (M1/M2/M3/M4) 优化的 MiroFish 保险客户访谈模拟系统。
+为 ARM64 平台适配的 MiroFish Docker 镜像。
 
 ## 这是什么
 
-MiroFish 是一个 AI 驱动的保险客户访谈模拟系统，帮助保险从业者通过模拟对话提升客户沟通技巧。本项目提供 ARM64 架构的 Docker 镜像，让 Mac 用户无需复杂配置即可本地运行。
+MiroFish 是一个 AI 驱动的客户访谈模拟系统。本项目提供 ARM64 架构的 Docker 镜像和本地化 OpenZep 知识图谱服务，方便在 ARM64 平台（如 Apple Silicon Mac、ARM64 Linux）工作的用户使用。
 
 ## 快速开始
 
@@ -21,7 +21,7 @@ mkdir -p data/neo4j data/openzep uploads
 
 # 3. 配置环境变量
 cp .env.example .env
-# 编辑 .env，填入阿里百炼 API Key
+# 编辑 .env，填入 LLM API Key
 
 # 4. 启动服务
 docker compose up -d
@@ -32,9 +32,9 @@ open http://localhost:3000
 
 ## 系统要求
 
-- **硬件**: Mac with Apple Silicon (M1/M2/M3/M4) 或 ARM64 Linux
+- **硬件**: ARM64 架构设备（Apple Silicon Mac M1/M2/M3/M4 或 ARM64 Linux）
 - **内存**: 8GB 最低，16GB 推荐
-- **Docker**: OrbStack (推荐) 或 Docker Desktop
+- **Docker**: OrbStack 或 Docker Desktop
 
 ## 服务端口
 
@@ -49,56 +49,46 @@ open http://localhost:3000
 
 | 变量名 | 说明 | 示例 |
 |--------|------|------|
-| `LLM_API_KEY` | 阿里百炼 API Key | `sk-xxxxxx` |
-| `LLM_MODEL` | 模型名称 | `qwen-plus` |
+| `LLM_API_KEY` | LLM API Key | `sk-xxxxxx` |
+| `LLM_MODEL` | 模型名称 | `gpt-4o` |
 
 ## 模型选择
 
-MiroFish 依赖阿里百炼 API 提供 AI 能力。不同模型对结构化输出（JSON Schema）的支持程度不同，这直接影响 OpenZep 知识图谱服务的正常工作。
+OpenZep 知识图谱服务需要 LLM 支持 JSON Schema 结构化输出。任何支持 JSON Schema 的 LLM 都可以使用。
 
-### 推荐模型（已验证）
+### JSON Schema 支持判断标准
 
-以下模型已验证支持 `json_schema` 模式，可确保系统正常运行：
+选择模型时，请确认以下能力：
 
-| 模型 | 状态 | 备注 |
-|------|------|------|
-| `glm-5` | ✅ 推荐 | 非思考模式 |
-| `glm-4.7` | ✅ 推荐 | 非思考模式 |
-| `qwen3-max-2026-01-23` | ✅ 可用 | 必须设置 `enable_thinking=false` |
-| `qwen3.5-plus` | ✅ 可用 | 必须设置 `enable_thinking=false` |
-
-### 待确认模型
-
-以下模型尚未完全验证，可能支持 `json_schema`：
-
-| 模型 | 状态 | 备注 |
-|------|------|------|
-| `kimi-k2.5` | ⚠️ 待确认 | 需要测试验证 |
-| `MiniMax-M2.5` | ⚠️ 待确认 | 需要测试验证 |
+| 能力 | 说明 |
+|------|------|
+| **结构化输出** | 支持通过 JSON Schema 约束响应格式 |
+| **响应格式参数** | API 支持 `response_format: { type: "json_schema", ... }` |
+| **严格模式** | 能够严格遵循 Schema 定义，不添加额外字段 |
 
 ### 配置示例
 
 在 `.env` 文件中配置模型：
 
 ```bash
-# 使用 GLM 系列（推荐）
-LLM_MODEL=glm-5
+# 通用配置
+LLM_API_KEY=your-api-key
+LLM_MODEL=your-model-name
 
-# 或使用 Qwen 系列（需关闭思考模式）
-LLM_MODEL=qwen3-max-2026-01-23
+# 如果模型需要特殊参数（如关闭思考模式）
 LLM_ENABLE_THINKING=false
 ```
 
 ### 常见问题
 
 **Q: 为什么某些模型无法正常工作？**  
-A: OpenZep 知识图谱服务需要 LLM 返回严格的 JSON 格式数据。只有支持 `json_schema` 响应格式的模型才能满足这一要求。
+A: OpenZep 知识图谱服务需要 LLM 返回严格的 JSON 格式数据。只有支持 JSON Schema 响应格式的模型才能满足这一要求。
 
-**Q: 如何判断模型是否支持 json_schema？**  
-A: 如果启动后 OpenZep 服务报错或知识图谱功能异常，可能是当前模型不支持 `json_schema`。请切换到上述推荐模型。
+**Q: 如何判断模型是否支持 JSON Schema？**  
+A: 查阅模型提供商的 API 文档，确认是否支持 `json_schema` 响应格式。如果启动后 OpenZep 服务报错或知识图谱功能异常，可能是当前模型不支持 JSON Schema。
 
-**Q: Qwen 系列为什么要关闭思考模式？**  
-A: Qwen 模型在思考模式下会输出推理过程，这会干扰 JSON Schema 的结构化输出。设置 `enable_thinking=false` 可禁用思考模式，确保输出格式正确。
+**Q: 某些模型输出推理过程导致 JSON 解析失败怎么办？**  
+A: 部分模型在思考模式下会输出推理过程，干扰结构化输出。尝试关闭思考模式或选择原生支持结构化输出的模型。
 
 更多详细信息请参考 [部署指南](docs/deployment.md)。
 
@@ -108,10 +98,9 @@ A: Qwen 模型在思考模式下会输出推理过程，这会干扰 JSON Schema
 
 ## 技术栈
 
-- **MiroFish**: AI 保险访谈模拟系统
-- **OpenZep**: 自托管知识图谱服务
-- **Neo4j**: 图数据库存储
-- **阿里百炼**: LLM API
+- https://github.com/666ghj/MiroFish
+- https://github.com/N1nEmAn/openzep
+- https://neo4j.com/
 
 ## 许可证
 
