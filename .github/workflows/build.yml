@@ -34,55 +34,71 @@ jobs:
   check-upstream:
     runs-on: ubuntu-latest
     outputs:
-      mirofish_changed: ${{ steps.check-mirofish.outputs.changed }}
-      openzep_changed: ${{ steps.check-openzep.outputs.changed }}
-      should_build: ${{ steps.decision.outputs.should_build }}
+      mirofish_changed: ${{ steps.check.outputs.mirofish_changed }}
+      openzep_changed: ${{ steps.check.outputs.openzep_changed }}
+      should_build: ${{ steps.check.outputs.should_build }}
+      mirofish_sha: ${{ steps.check.outputs.mirofish_sha }}
+      openzep_sha: ${{ steps.check.outputs.openzep_sha }}
     steps:
       - name: Checkout this repo
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Check MiroFish upstream
-        id: check-mirofish
+      - name: Load upstream state
+        id: load-state
         run: |
-          UPSTREAM_SHA=$(curl -s "https://api.github.com/repos/666ghj/MiroFish/commits/main" | jq -r '.sha')
-          echo "upstream_mirofish_sha=$UPSTREAM_SHA" >> $GITHUB_OUTPUT
-          LAST_BUILD_SHA=$(git log --grep="mirofish-upstream:" --oneline -1 | grep -oP 'mirofish-upstream:\K[a-f0-9]+' || echo "")
-          if [ "$UPSTREAM_SHA" != "$LAST_BUILD_SHA" ]; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-            echo "MiroFish upstream has new commits: $UPSTREAM_SHA"
+          if [ -f ".github/upstream-state.json" ]; then
+            echo "state_file_exists=true" >> $GITHUB_OUTPUT
+            cat .github/upstream-state.json
           else
-            echo "changed=false" >> $GITHUB_OUTPUT
-            echo "MiroFish upstream unchanged"
+            echo "state_file_exists=false" >> $GITHUB_OUTPUT
+            echo '{"mirofish":{"sha":""},"openzep":{"sha":""}}' > .github/upstream-state.json
           fi
 
-      - name: Check OpenZep upstream
-        id: check-openzep
+      - name: Check upstream changes
+        id: check
         run: |
-          UPSTREAM_SHA=$(curl -s "https://api.github.com/repos/N1nEmAn/openzep/commits/main" | jq -r '.sha')
-          echo "upstream_openzep_sha=$UPSTREAM_SHA" >> $GITHUB_OUTPUT
-          LAST_BUILD_SHA=$(git log --grep="openzep-upstream:" --oneline -1 | grep -oP 'openzep-upstream:\K[a-f0-9]+' || echo "")
-          if [ "$UPSTREAM_SHA" != "$LAST_BUILD_SHA" ]; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-            echo "OpenZep upstream has new commits: $UPSTREAM_SHA"
+          # 获取上游最新 SHA
+          MIROFISH_SHA=$(curl -s "https://api.github.com/repos/666ghj/MiroFish/commits/main" | jq -r '.sha')
+          OPENZEP_SHA=$(curl -s "https://api.github.com/repos/N1nEmAn/openzep/commits/main" | jq -r '.sha')
+          
+          echo "mirofish_sha=$MIROFISH_SHA" >> $GITHUB_OUTPUT
+          echo "openzep_sha=$OPENZEP_SHA" >> $GITHUB_OUTPUT
+          
+          # 读取上次构建的 SHA
+          LAST_MIROFISH_SHA=$(jq -r '.mirofish.sha' .github/upstream-state.json)
+          LAST_OPENZEP_SHA=$(jq -r '.openzep.sha' .github/upstream-state.json)
+          
+          echo "📊 Upstream Status:"
+          echo "  MiroFish: $MIROFISH_SHA (last built: $LAST_MIROFISH_SHA)"
+          echo "  OpenZep:  $OPENZEP_SHA (last built: $LAST_OPENZEP_SHA)"
+          
+          # 判断是否有变化
+          if [ "$MIROFISH_SHA" != "$LAST_MIROFISH_SHA" ]; then
+            echo "mirofish_changed=true" >> $GITHUB_OUTPUT
+            echo "✅ MiroFish has new commits"
           else
-            echo "changed=false" >> $GITHUB_OUTPUT
-            echo "OpenZep upstream unchanged"
+            echo "mirofish_changed=false" >> $GITHUB_OUTPUT
+            echo "⏭️ MiroFish unchanged"
           fi
-
-      - name: Build decision
-        id: decision
-        run: |
+          
+          if [ "$OPENZEP_SHA" != "$LAST_OPENZEP_SHA" ]; then
+            echo "openzep_changed=true" >> $GITHUB_OUTPUT
+            echo "✅ OpenZep has new commits"
+          else
+            echo "openzep_changed=false" >> $GITHUB_OUTPUT
+            echo "⏭️ OpenZep unchanged"
+          fi
+          
+          # 构建决策
           if [ "${{ github.event_name }}" == "push" ] || [ "${{ inputs.force_build }}" == "true" ]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
-            echo "Building due to tag push or force build"
-          elif [ "${{ steps.check-mirofish.outputs.changed }}" == "true" ] || [ "${{ steps.check-openzep.outputs.changed }}" == "true" ]; then
+            echo "🚀 Building due to tag push or force build"
+          elif [ "$MIROFISH_SHA" != "$LAST_MIROFISH_SHA" ] || [ "$OPENZEP_SHA" != "$LAST_OPENZEP_SHA" ]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
-            echo "Building due to upstream changes"
+            echo "🚀 Building due to upstream changes"
           else
             echo "should_build=false" >> $GITHUB_OUTPUT
-            echo "Skipping build - no upstream changes"
+            echo "⏭️ Skipping build - no upstream changes"
           fi
 
   # 使用 matrix 策略构建镜像
@@ -111,12 +127,14 @@ jobs:
           repository: ${{ matrix.repo }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get upstream commit SHA
-        id: upstream-sha
+      - name: Get upstream commit info
+        id: upstream-info
         run: |
           UPSTREAM_SHA=$(git rev-parse HEAD)
+          UPSTREAM_DATE=$(git log -1 --format=%ci HEAD)
           echo "sha=$UPSTREAM_SHA" >> $GITHUB_OUTPUT
-          echo "Upstream ${{ matrix.name }} commit: $UPSTREAM_SHA"
+          echo "date=$UPSTREAM_DATE" >> $GITHUB_OUTPUT
+          echo "📦 Building ${{ matrix.name }} from commit: $UPSTREAM_SHA ($UPSTREAM_DATE)"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -161,11 +179,61 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Digest**: \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Tags**: \`${{ steps.meta.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Upstream**: ${{ steps.upstream-sha.outputs.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Upstream**: ${{ steps.upstream-info.outputs.sha }}" >> $GITHUB_STEP_SUMMARY
 
     outputs:
-      mirofish_upstream_sha: ${{ steps.upstream-sha.outputs.sha }}
-      openzep_upstream_sha: ${{ steps.upstream-sha.outputs.sha }}
+      mirofish_sha: ${{ steps.upstream-info.outputs.sha }}
+      mirofish_date: ${{ steps.upstream-info.outputs.date }}
+      openzep_sha: ${{ steps.upstream-info.outputs.sha }}
+      openzep_date: ${{ steps.upstream-info.outputs.date }}
+
+  # 更新状态文件
+  update-state:
+    needs: [check-upstream, build]
+    if: success()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update upstream state file
+        run: |
+          # 获取当前时间
+          BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          
+          # 获取上游 commit 时间
+          MIROFISH_DATE=$(curl -s "https://api.github.com/repos/666ghj/MiroFish/commits/main" | jq -r '.commit.committer.date')
+          OPENZEP_DATE=$(curl -s "https://api.github.com/repos/N1nEmAn/openzep/commits/main" | jq -r '.commit.committer.date')
+          
+          # 更新状态文件
+          cat > .github/upstream-state.json << EOF
+          {
+            "mirofish": {
+              "sha": "${{ needs.check-upstream.outputs.mirofish_sha }}",
+              "updated_at": "$MIROFISH_DATE"
+            },
+            "openzep": {
+              "sha": "${{ needs.check-upstream.outputs.openzep_sha }}",
+              "updated_at": "$OPENZEP_DATE"
+            },
+            "last_build": "$BUILD_TIME"
+          }
+          EOF
+          
+          echo "📝 Updated upstream-state.json:"
+          cat .github/upstream-state.json
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/upstream-state.json
+          git diff --quiet && git diff --staged --quiet || git commit -m "chore: update upstream state after build [skip ci]"
+          git push
 
   # 构建摘要
   summary:
@@ -203,5 +271,8 @@ jobs:
           echo "上游仓库无更新，跳过本次定时构建。" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 检测状态" >> $GITHUB_STEP_SUMMARY
-          echo "- MiroFish: 无变化" >> $GITHUB_STEP_SUMMARY
-          echo "- OpenZep: 无变化" >> $GITHUB_STEP_SUMMARY
+          echo "- MiroFish: ${{ needs.check-upstream.outputs.mirofish_changed == 'true' && '有更新' || '无变化' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- OpenZep: ${{ needs.check-upstream.outputs.openzep_changed == 'true' && '有更新' || '无变化' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 下次检查" >> $GITHUB_STEP_SUMMARY
+          echo "- 下周日 02:00 UTC（北京时间 10:00）" >> $GITHUB_STEP_SUMMARY
