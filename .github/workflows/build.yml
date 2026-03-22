@@ -14,6 +14,14 @@ on:
         options:
           - 'false'
           - 'true'
+      cleanup_old_versions:
+        description: '清理旧版本镜像'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
   schedule:
     # Weekly rebuild on Sunday at 2:00 UTC
     - cron: '0 2 * * 0'
@@ -22,6 +30,8 @@ env:
   REGISTRY: ghcr.io
   GITHUB_USER: slashinchi
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  # 保留的版本数量
+  KEEP_VERSIONS: 5
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -89,7 +99,6 @@ jobs:
           MIROFISH_RELEASE_TAG=$(echo "$MIROFISH_LATEST_RELEASE" | jq -r '.tag_name // empty')
           
           if [ -n "$MIROFISH_RELEASE_TAG" ]; then
-            # 获取 release tag 指向的 commit SHA
             RELEASE_COMMIT=$(curl -s "https://api.github.com/repos/666ghj/MiroFish/git/ref/tags/$MIROFISH_RELEASE_TAG" | jq -r '.object.sha // empty')
             
             if [ "$RELEASE_COMMIT" = "$MIROFISH_SHA" ]; then
@@ -104,13 +113,12 @@ jobs:
             echo "mirofish_version=$BUILD_DATE" >> $GITHUB_OUTPUT
           fi
           
-          # OpenZep: 始终使用日期版本（无 release）
           echo "openzep_version=$BUILD_DATE" >> $GITHUB_OUTPUT
           
           echo ""
           echo "📦 Version tags:"
-          echo "  MiroFish: ${{ steps.check.outputs.mirofish_sha }}" -> $(cat $GITHUB_OUTPUT | grep mirofish_version | cut -d= -f2)"
-          echo "  OpenZep:  ${{ steps.check.outputs.openzep_sha }}" -> $BUILD_DATE"
+          echo "  MiroFish: $(grep mirofish_version $GITHUB_OUTPUT | cut -d= -f2)"
+          echo "  OpenZep:  $BUILD_DATE"
 
       - name: Fetch new commits info
         id: commits
@@ -119,7 +127,6 @@ jobs:
           LAST_OPENZEP_SHA=$(jq -r '.openzep.sha' .github/upstream-state.json)
           HAS_CHANGES="false"
           
-          # Fetch MiroFish commits since last build
           if [ "${{ steps.check.outputs.mirofish_changed }}" == "true" ] && [ -n "$LAST_MIROFISH_SHA" ]; then
             MIROFISH_COMMITS=$(curl -s "https://api.github.com/repos/666ghj/MiroFish/compare/${LAST_MIROFISH_SHA}...main" | \
               jq -r '.commits[] | "- `\(.sha[:7])` - \(.commit.message | split("\n")[0])"' | head -10)
@@ -131,7 +138,6 @@ jobs:
             fi
           fi
           
-          # Fetch OpenZep commits since last build
           if [ "${{ steps.check.outputs.openzep_changed }}" == "true" ] && [ -n "$LAST_OPENZEP_SHA" ]; then
             OPENZEP_COMMITS=$(curl -s "https://api.github.com/repos/N1nEmAn/openzep/compare/${LAST_OPENZEP_SHA}...main" | \
               jq -r '.commits[] | "- `\(.sha[:7])` - \(.commit.message | split("\n")[0])"' | head -10)
@@ -222,6 +228,43 @@ jobs:
           echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
+  # 清理旧版本镜像
+  cleanup:
+    needs: build
+    if: always() && needs.build.result == 'success' && inputs.cleanup_old_versions == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Clean up old package versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "## 🧹 清理旧版本镜像" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          for IMAGE in mirofish openzep; do
+            echo "Cleaning $IMAGE..." >> $GITHUB_STEP_SUMMARY
+            
+            # 获取所有版本
+            VERSIONS=$(gh api --paginate /users/${{ env.GITHUB_USER }}/packages/container/$IMAGE/versions \
+              --jq '.[] | {id: .id, created: .created_at, tags: .metadata.container.tags}')
+            
+            # 统计版本数量
+            TOTAL=$(echo "$VERSIONS" | jq -s 'length')
+            echo "- $IMAGE 当前版本数: $TOTAL" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "$TOTAL" -gt ${{ env.KEEP_VERSIONS }} ]; then
+              # 获取需要删除的版本 ID（保留最新的 KEEP_VERSIONS 个）
+              DELETE_IDS=$(echo "$VERSIONS" | jq -r '.id' | tail -n +$((${{ env.KEEP_VERSIONS }} + 1)))
+              
+              for ID in $DELETE_IDS; do
+                echo "  删除版本 $ID..." >> $GITHUB_STEP_SUMMARY
+                gh api --method DELETE /users/${{ env.GITHUB_USER }}/packages/container/$IMAGE/versions/$ID || true
+              done
+            fi
+          done
+
   update-state:
     needs: [check-upstream, build]
     if: success()
@@ -262,7 +305,6 @@ jobs:
           MIROFISH_COMMITS="${{ needs.check-upstream.outputs.mirofish_commits }}"
           OPENZEP_COMMITS="${{ needs.check-upstream.outputs.openzep_commits }}"
           
-          # Create new section
           NEW_SECTION="## $BUILD_DATE\n\n"
           
           if [ -n "$MIROFISH_COMMITS" ]; then
@@ -277,7 +319,6 @@ jobs:
           
           NEW_SECTION+="---\n\n"
           
-          # Update file
           if [ -f "UPDATES.md" ]; then
             awk -v new="$NEW_SECTION" '
               /^---$/ { print; if (++count == 1) { printf "%s", new }; next }
