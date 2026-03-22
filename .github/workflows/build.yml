@@ -39,6 +39,8 @@ jobs:
       mirofish_commits: ${{ steps.commits.outputs.mirofish }}
       openzep_commits: ${{ steps.commits.outputs.openzep }}
       has_changes: ${{ steps.commits.outputs.has_changes }}
+      mirofish_version: ${{ steps.version.outputs.mirofish_version }}
+      openzep_version: ${{ steps.version.outputs.openzep_version }}
     steps:
       - name: Checkout this repo
         uses: actions/checkout@v4
@@ -75,6 +77,40 @@ jobs:
           else
             echo "should_build=false" >> $GITHUB_OUTPUT
           fi
+
+      - name: Determine version tags
+        id: version
+        run: |
+          BUILD_DATE=$(date -u '+%Y%m%d')
+          MIROFISH_SHA="${{ steps.check.outputs.mirofish_sha }}"
+          
+          # MiroFish: 检查最新 release 是否匹配当前 commit
+          MIROFISH_LATEST_RELEASE=$(curl -s "https://api.github.com/repos/666ghj/MiroFish/releases/latest" 2>/dev/null || echo "{}")
+          MIROFISH_RELEASE_TAG=$(echo "$MIROFISH_LATEST_RELEASE" | jq -r '.tag_name // empty')
+          
+          if [ -n "$MIROFISH_RELEASE_TAG" ]; then
+            # 获取 release tag 指向的 commit SHA
+            RELEASE_COMMIT=$(curl -s "https://api.github.com/repos/666ghj/MiroFish/git/ref/tags/$MIROFISH_RELEASE_TAG" | jq -r '.object.sha // empty')
+            
+            if [ "$RELEASE_COMMIT" = "$MIROFISH_SHA" ]; then
+              echo "✅ MiroFish commit matches release $MIROFISH_RELEASE_TAG"
+              echo "mirofish_version=$MIROFISH_RELEASE_TAG" >> $GITHUB_OUTPUT
+            else
+              echo "📌 MiroFish has unreleased commits, using date version"
+              echo "mirofish_version=$BUILD_DATE" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "📌 MiroFish no releases found, using date version"
+            echo "mirofish_version=$BUILD_DATE" >> $GITHUB_OUTPUT
+          fi
+          
+          # OpenZep: 始终使用日期版本（无 release）
+          echo "openzep_version=$BUILD_DATE" >> $GITHUB_OUTPUT
+          
+          echo ""
+          echo "📦 Version tags:"
+          echo "  MiroFish: ${{ steps.check.outputs.mirofish_sha }}" -> $(cat $GITHUB_OUTPUT | grep mirofish_version | cut -d= -f2)"
+          echo "  OpenZep:  ${{ steps.check.outputs.openzep_sha }}" -> $BUILD_DATE"
 
       - name: Fetch new commits info
         id: commits
@@ -123,9 +159,11 @@ jobs:
           - name: mirofish
             repo: 666ghj/MiroFish
             image: mirofish
+            version: ${{ needs.check-upstream.outputs.mirofish_version }}
           - name: openzep
             repo: N1nEmAn/openzep
             image: openzep
+            version: ${{ needs.check-upstream.outputs.openzep_version }}
 
     steps:
       - name: Checkout upstream source
@@ -158,7 +196,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.GITHUB_USER }}/${{ matrix.image }}
           tags: |
             type=ref,event=tag
-            type=raw,value=arm64
+            type=raw,value=${{ matrix.version }}-arm64
             type=raw,value=latest
             type=sha,prefix=,suffix=,format=short
 
@@ -177,6 +215,8 @@ jobs:
       - name: Show tags
         run: |
           echo "### ${{ matrix.name }} 镜像已推送" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "版本: \`${{ matrix.version }}-arm64\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
@@ -203,11 +243,13 @@ jobs:
           {
             "mirofish": {
               "sha": "${{ needs.check-upstream.outputs.mirofish_sha }}",
-              "updated_at": "$MIROFISH_DATE"
+              "updated_at": "$MIROFISH_DATE",
+              "version": "${{ needs.check-upstream.outputs.mirofish_version }}"
             },
             "openzep": {
               "sha": "${{ needs.check-upstream.outputs.openzep_sha }}",
-              "updated_at": "$OPENZEP_DATE"
+              "updated_at": "$OPENZEP_DATE",
+              "version": "${{ needs.check-upstream.outputs.openzep_version }}"
             },
             "last_build": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
           }
@@ -237,7 +279,6 @@ jobs:
           
           # Update file
           if [ -f "UPDATES.md" ]; then
-            # Insert after header (after first --- line)
             awk -v new="$NEW_SECTION" '
               /^---$/ { print; if (++count == 1) { printf "%s", new }; next }
               { print }
@@ -261,10 +302,10 @@ jobs:
         run: |
           echo "## 🐳 ARM64 镜像构建完成" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| 镜像 | 地址 |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
-          echo "| MiroFish | \`ghcr.io/slashinchi/mirofish:latest\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| OpenZep | \`ghcr.io/slashinchi/openzep:latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| 镜像 | 版本 | 地址 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| MiroFish | \`${{ needs.check-upstream.outputs.mirofish_version }}-arm64\` | \`ghcr.io/slashinchi/mirofish:latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| OpenZep | \`${{ needs.check-upstream.outputs.openzep_version }}-arm64\` | \`ghcr.io/slashinchi/openzep:latest\` |" >> $GITHUB_STEP_SUMMARY
 
   skip-summary:
     needs: check-upstream
