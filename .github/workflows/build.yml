@@ -15,8 +15,8 @@ on:
           - 'false'
           - 'true'
   schedule:
-    # Weekly rebuild on Sunday at 2:00 UTC
-    - cron: '0 2 * * 0'
+    # Daily rebuild check at 2:00 UTC (Beijing time 10:00)
+    - cron: '0 2 * * *'
 
 env:
   REGISTRY: ghcr.io
@@ -245,7 +245,7 @@ jobs:
             "mirofish": {
               "sha": "${{ needs.check-upstream.outputs.mirofish_sha }}",
               "updated_at": "$MIROFISH_DATE",
-              "version": "${{ needs.check-upstream.outputs.mirofish_version }}"
+              "version": "${{ needs.check-upstream.outputs.mirofish_output.mirofish_version }}"
             },
             "openzep": {
               "sha": "${{ needs.check-upstream.outputs.openzep_sha }}",
