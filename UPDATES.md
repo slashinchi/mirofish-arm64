@@ -1,7 +1,3 @@
-## 2026-03-22
-
----
-
 # 更新日志
 
 本文件自动记录上游项目的更新。
@@ -34,7 +30,7 @@
 
 ### MiroFish
 
-- `985f89f` - fix: resolve 500 error caused by `<think>` tags and markdown code fences in content field from reasoning models
+- `985f89f` - fix: resolve 500 error caused by `ылки` tags and markdown code fences in content field from reasoning models
 - `a1ff79c` - Update README
 
 ---
