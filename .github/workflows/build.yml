@@ -14,14 +14,6 @@ on:
         options:
           - 'false'
           - 'true'
-      cleanup_old_versions:
-        description: '清理旧版本镜像'
-        required: false
-        default: 'false'
-        type: choice
-        options:
-          - 'false'
-          - 'true'
   schedule:
     # Weekly rebuild on Sunday at 2:00 UTC
     - cron: '0 2 * * 0'
@@ -30,8 +22,6 @@ env:
   REGISTRY: ghcr.io
   GITHUB_USER: slashinchi
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-  # 保留的版本数量
-  KEEP_VERSIONS: 5
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -91,10 +81,10 @@ jobs:
       - name: Determine version tags
         id: version
         run: |
-          BUILD_DATE=$(date -u '+%Y%m%d')
           MIROFISH_SHA="${{ steps.check.outputs.mirofish_sha }}"
+          OPENZEP_SHA="${{ steps.check.outputs.openzep_sha }}"
           
-          # MiroFish: 检查最新 release 是否匹配当前 commit
+          # MiroFish: 优先使用 release tag，否则用短 SHA
           MIROFISH_LATEST_RELEASE=$(curl -s "https://api.github.com/repos/666ghj/MiroFish/releases/latest" 2>/dev/null || echo "{}")
           MIROFISH_RELEASE_TAG=$(echo "$MIROFISH_LATEST_RELEASE" | jq -r '.tag_name // empty')
           
@@ -105,20 +95,25 @@ jobs:
               echo "✅ MiroFish commit matches release $MIROFISH_RELEASE_TAG"
               echo "mirofish_version=$MIROFISH_RELEASE_TAG" >> $GITHUB_OUTPUT
             else
-              echo "📌 MiroFish has unreleased commits, using date version"
-              echo "mirofish_version=$BUILD_DATE" >> $GITHUB_OUTPUT
+              MIROFISH_SHORT_SHA="${MIROFISH_SHA:0:7}"
+              echo "📌 MiroFish using short SHA: $MIROFISH_SHORT_SHA"
+              echo "mirofish_version=$MIROFISH_SHORT_SHA" >> $GITHUB_OUTPUT
             fi
           else
-            echo "📌 MiroFish no releases found, using date version"
-            echo "mirofish_version=$BUILD_DATE" >> $GITHUB_OUTPUT
+            MIROFISH_SHORT_SHA="${MIROFISH_SHA:0:7}"
+            echo "📌 MiroFish no releases, using short SHA: $MIROFISH_SHORT_SHA"
+            echo "mirofish_version=$MIROFISH_SHORT_SHA" >> $GITHUB_OUTPUT
           fi
           
-          echo "openzep_version=$BUILD_DATE" >> $GITHUB_OUTPUT
+          # OpenZep: 使用短 SHA（无 release）
+          OPENZEP_SHORT_SHA="${OPENZEP_SHA:0:7}"
+          echo "📌 OpenZep using short SHA: $OPENZEP_SHORT_SHA"
+          echo "openzep_version=$OPENZEP_SHORT_SHA" >> $GITHUB_OUTPUT
           
           echo ""
           echo "📦 Version tags:"
           echo "  MiroFish: $(grep mirofish_version $GITHUB_OUTPUT | cut -d= -f2)"
-          echo "  OpenZep:  $BUILD_DATE"
+          echo "  OpenZep:  $OPENZEP_SHORT_SHA"
 
       - name: Fetch new commits info
         id: commits
@@ -204,7 +199,7 @@ jobs:
             type=ref,event=tag
             type=raw,value=${{ matrix.version }}-arm64
             type=raw,value=latest
-            type=sha,prefix=,suffix=,format=short
+            type=raw,value=arm64
 
       - name: Build and push image
         uses: docker/build-push-action@v5
@@ -227,43 +222,6 @@ jobs:
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-
-  # 清理旧版本镜像
-  cleanup:
-    needs: build
-    if: always() && needs.build.result == 'success' && inputs.cleanup_old_versions == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      packages: write
-    steps:
-      - name: Clean up old package versions
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "## 🧹 清理旧版本镜像" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          for IMAGE in mirofish openzep; do
-            echo "Cleaning $IMAGE..." >> $GITHUB_STEP_SUMMARY
-            
-            # 获取所有版本
-            VERSIONS=$(gh api --paginate /users/${{ env.GITHUB_USER }}/packages/container/$IMAGE/versions \
-              --jq '.[] | {id: .id, created: .created_at, tags: .metadata.container.tags}')
-            
-            # 统计版本数量
-            TOTAL=$(echo "$VERSIONS" | jq -s 'length')
-            echo "- $IMAGE 当前版本数: $TOTAL" >> $GITHUB_STEP_SUMMARY
-            
-            if [ "$TOTAL" -gt ${{ env.KEEP_VERSIONS }} ]; then
-              # 获取需要删除的版本 ID（保留最新的 KEEP_VERSIONS 个）
-              DELETE_IDS=$(echo "$VERSIONS" | jq -r '.id' | tail -n +$((${{ env.KEEP_VERSIONS }} + 1)))
-              
-              for ID in $DELETE_IDS; do
-                echo "  删除版本 $ID..." >> $GITHUB_STEP_SUMMARY
-                gh api --method DELETE /users/${{ env.GITHUB_USER }}/packages/container/$IMAGE/versions/$ID || true
-              done
-            fi
-          done
 
   update-state:
     needs: [check-upstream, build]
