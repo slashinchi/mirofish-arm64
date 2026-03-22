@@ -21,16 +21,13 @@ on:
 env:
   REGISTRY: ghcr.io
   GITHUB_USER: slashinchi
-  # 强制使用 Node.js 24，消除弃用警告
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
-# 并发控制：同一分支/标签的新构建会取消正在进行的构建
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # 检测上游仓库是否有更新
   check-upstream:
     runs-on: ubuntu-latest
     outputs:
@@ -39,69 +36,69 @@ jobs:
       should_build: ${{ steps.check.outputs.should_build }}
       mirofish_sha: ${{ steps.check.outputs.mirofish_sha }}
       openzep_sha: ${{ steps.check.outputs.openzep_sha }}
+      mirofish_commits: ${{ steps.commits.outputs.mirofish }}
+      openzep_commits: ${{ steps.commits.outputs.openzep }}
     steps:
       - name: Checkout this repo
         uses: actions/checkout@v4
 
       - name: Load upstream state
-        id: load-state
         run: |
-          if [ -f ".github/upstream-state.json" ]; then
-            echo "state_file_exists=true" >> $GITHUB_OUTPUT
-            cat .github/upstream-state.json
-          else
-            echo "state_file_exists=false" >> $GITHUB_OUTPUT
+          if [ ! -f ".github/upstream-state.json" ]; then
             echo '{"mirofish":{"sha":""},"openzep":{"sha":""}}' > .github/upstream-state.json
           fi
 
       - name: Check upstream changes
         id: check
         run: |
-          # 获取上游最新 SHA
           MIROFISH_SHA=$(curl -s "https://api.github.com/repos/666ghj/MiroFish/commits/main" | jq -r '.sha')
           OPENZEP_SHA=$(curl -s "https://api.github.com/repos/N1nEmAn/openzep/commits/main" | jq -r '.sha')
           
           echo "mirofish_sha=$MIROFISH_SHA" >> $GITHUB_OUTPUT
           echo "openzep_sha=$OPENZEP_SHA" >> $GITHUB_OUTPUT
           
-          # 读取上次构建的 SHA
           LAST_MIROFISH_SHA=$(jq -r '.mirofish.sha' .github/upstream-state.json)
           LAST_OPENZEP_SHA=$(jq -r '.openzep.sha' .github/upstream-state.json)
           
           echo "📊 Upstream Status:"
-          echo "  MiroFish: $MIROFISH_SHA (last built: $LAST_MIROFISH_SHA)"
-          echo "  OpenZep:  $OPENZEP_SHA (last built: $LAST_OPENZEP_SHA)"
+          echo "  MiroFish: $MIROFISH_SHA (last: $LAST_MIROFISH_SHA)"
+          echo "  OpenZep:  $OPENZEP_SHA (last: $LAST_OPENZEP_SHA)"
           
-          # 判断是否有变化
-          if [ "$MIROFISH_SHA" != "$LAST_MIROFISH_SHA" ]; then
-            echo "mirofish_changed=true" >> $GITHUB_OUTPUT
-            echo "✅ MiroFish has new commits"
-          else
-            echo "mirofish_changed=false" >> $GITHUB_OUTPUT
-            echo "⏭️ MiroFish unchanged"
-          fi
+          [ "$MIROFISH_SHA" != "$LAST_MIROFISH_SHA" ] && echo "mirofish_changed=true" >> $GITHUB_OUTPUT || echo "mirofish_changed=false" >> $GITHUB_OUTPUT
+          [ "$OPENZEP_SHA" != "$LAST_OPENZEP_SHA" ] && echo "openzep_changed=true" >> $GITHUB_OUTPUT || echo "openzep_changed=false" >> $GITHUB_OUTPUT
           
-          if [ "$OPENZEP_SHA" != "$LAST_OPENZEP_SHA" ]; then
-            echo "openzep_changed=true" >> $GITHUB_OUTPUT
-            echo "✅ OpenZep has new commits"
-          else
-            echo "openzep_changed=false" >> $GITHUB_OUTPUT
-            echo "⏭️ OpenZep unchanged"
-          fi
-          
-          # 构建决策
           if [ "${{ github.event_name }}" == "push" ] || [ "${{ inputs.force_build }}" == "true" ]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
-            echo "🚀 Building due to tag push or force build"
           elif [ "$MIROFISH_SHA" != "$LAST_MIROFISH_SHA" ] || [ "$OPENZEP_SHA" != "$LAST_OPENZEP_SHA" ]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
-            echo "🚀 Building due to upstream changes"
           else
             echo "should_build=false" >> $GITHUB_OUTPUT
-            echo "⏭️ Skipping build - no upstream changes"
           fi
 
-  # 使用 matrix 策略构建镜像
+      - name: Fetch new commits info
+        id: commits
+        run: |
+          LAST_MIROFISH_SHA=$(jq -r '.mirofish.sha' .github/upstream-state.json)
+          LAST_OPENZEP_SHA=$(jq -r '.openzep.sha' .github/upstream-state.json)
+          
+          # Fetch MiroFish commits since last build
+          if [ "${{ steps.check.outputs.mirofish_changed }}" == "true" ] && [ -n "$LAST_MIROFISH_SHA" ]; then
+            MIROFISH_COMMITS=$(curl -s "https://api.github.com/repos/666ghj/MiroFish/compare/${LAST_MIROFISH_SHA}...main" | \
+              jq -r '.commits[] | "- `\(.sha[:7])` - \(.commit.message | split("\n")[0])"' | head -10)
+            echo "mirofish<<EOF" >> $GITHUB_OUTPUT
+            echo "$MIROFISH_COMMITS" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+          
+          # Fetch OpenZep commits since last build
+          if [ "${{ steps.check.outputs.openzep_changed }}" == "true" ] && [ -n "$LAST_OPENZEP_SHA" ]; then
+            OPENZEP_COMMITS=$(curl -s "https://api.github.com/repos/N1nEmAn/openzep/compare/${LAST_OPENZEP_SHA}...main" | \
+              jq -r '.commits[] | "- `\(.sha[:7])` - \(.commit.message | split("\n")[0])"' | head -10)
+            echo "openzep<<EOF" >> $GITHUB_OUTPUT
+            echo "$OPENZEP_COMMITS" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
   build:
     needs: check-upstream
     if: needs.check-upstream.outputs.should_build == 'true'
@@ -126,15 +123,6 @@ jobs:
         with:
           repository: ${{ matrix.repo }}
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Get upstream commit info
-        id: upstream-info
-        run: |
-          UPSTREAM_SHA=$(git rev-parse HEAD)
-          UPSTREAM_DATE=$(git log -1 --format=%ci HEAD)
-          echo "sha=$UPSTREAM_SHA" >> $GITHUB_OUTPUT
-          echo "date=$UPSTREAM_DATE" >> $GITHUB_OUTPUT
-          echo "📦 Building ${{ matrix.name }} from commit: $UPSTREAM_SHA ($UPSTREAM_DATE)"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -161,7 +149,6 @@ jobs:
             type=sha,prefix=,suffix=,format=short
 
       - name: Build and push image
-        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -173,21 +160,6 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,scope=${{ matrix.name }},mode=max
 
-      - name: Show build result
-        run: |
-          echo "### ${{ matrix.name }} 镜像构建完成" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Digest**: \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tags**: \`${{ steps.meta.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Upstream**: ${{ steps.upstream-info.outputs.sha }}" >> $GITHUB_STEP_SUMMARY
-
-    outputs:
-      mirofish_sha: ${{ steps.upstream-info.outputs.sha }}
-      mirofish_date: ${{ steps.upstream-info.outputs.date }}
-      openzep_sha: ${{ steps.upstream-info.outputs.sha }}
-      openzep_date: ${{ steps.upstream-info.outputs.date }}
-
-  # 更新状态文件
   update-state:
     needs: [check-upstream, build]
     if: success()
@@ -202,14 +174,10 @@ jobs:
 
       - name: Update upstream state file
         run: |
-          # 获取当前时间
-          BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-          
-          # 获取上游 commit 时间
+          BUILD_TIME=$(date -u '+%Y-%m-%d')
           MIROFISH_DATE=$(curl -s "https://api.github.com/repos/666ghj/MiroFish/commits/main" | jq -r '.commit.committer.date')
           OPENZEP_DATE=$(curl -s "https://api.github.com/repos/N1nEmAn/openzep/commits/main" | jq -r '.commit.committer.date')
           
-          # 更新状态文件
           cat > .github/upstream-state.json << EOF
           {
             "mirofish": {
@@ -220,22 +188,49 @@ jobs:
               "sha": "${{ needs.check-upstream.outputs.openzep_sha }}",
               "updated_at": "$OPENZEP_DATE"
             },
-            "last_build": "$BUILD_TIME"
+            "last_build": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
           }
           EOF
+
+      - name: Update UPDATES.md
+        run: |
+          BUILD_DATE=$(date -u '+%Y-%m-%d')
+          MIROFISH_COMMITS="${{ needs.check-upstream.outputs.mirofish_commits }}"
+          OPENZEP_COMMITS="${{ needs.check-upstream.outputs.openzep_commits }}"
           
-          echo "📝 Updated upstream-state.json:"
-          cat .github/upstream-state.json
+          # Create new section
+          NEW_SECTION=""
+          NEW_SECTION+="## $BUILD_DATE\n\n"
+          
+          if [ -n "$MIROFISH_COMMITS" ]; then
+            NEW_SECTION+="### MiroFish\n\n"
+            NEW_SECTION+="$MIROFISH_COMMITS\n\n"
+          fi
+          
+          if [ -n "$OPENZEP_COMMITS" ]; then
+            NEW_SECTION+="### OpenZep\n\n"
+            NEW_SECTION+="$OPENZEP_COMMITS\n\n"
+          fi
+          
+          NEW_SECTION+="---\n\n"
+          
+          # Insert after header
+          if [ -f "UPDATES.md" ]; then
+            # Find the line after initial content (after first ---)
+            sed -i "1,/^---$/!{0,/^---$/s/^---$/---\n\n$(echo -e "$NEW_SECTION" | sed 's/[\/&]/\\&/g')/}" UPDATES.md 2>/dev/null || \
+            echo -e "$NEW_SECTION$(cat UPDATES.md)" > UPDATES.md
+          else
+            echo -e "# 更新日志\n\n本文件自动记录上游项目的更新。\n\n---\n\n$NEW_SECTION" > UPDATES.md
+          fi
 
       - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .github/upstream-state.json
-          git diff --quiet && git diff --staged --quiet || git commit -m "chore: update upstream state after build [skip ci]"
+          git add .github/upstream-state.json UPDATES.md
+          git diff --quiet && git diff --staged --quiet || git commit -m "chore: update upstream state and UPDATES.md [skip ci]"
           git push
 
-  # 构建摘要
   summary:
     needs: [check-upstream, build]
     if: always() && needs.build.result == 'success'
@@ -245,20 +240,11 @@ jobs:
         run: |
           echo "## 🐳 ARM64 镜像构建完成" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| 镜像 | 标签 | 地址 |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|------|------|" >> $GITHUB_STEP_SUMMARY
-          echo "| MiroFish | latest, arm64 | \`ghcr.io/slashinchi/mirofish:latest\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| OpenZep | latest, arm64 | \`ghcr.io/slashinchi/openzep:latest\` |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 上游仓库状态" >> $GITHUB_STEP_SUMMARY
-          echo "- MiroFish: ${{ needs.check-upstream.outputs.mirofish_changed == 'true' && '有更新 ✅' || '无变化' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- OpenZep: ${{ needs.check-upstream.outputs.openzep_changed == 'true' && '有更新 ✅' || '无变化' }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 触发方式" >> $GITHUB_STEP_SUMMARY
-          echo "- 事件类型: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- 触发时间: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "| 镜像 | 地址 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| MiroFish | \`ghcr.io/slashinchi/mirofish:latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| OpenZep | \`ghcr.io/slashinchi/openzep:latest\` |" >> $GITHUB_STEP_SUMMARY
 
-  # 跳过构建时的摘要
   skip-summary:
     needs: check-upstream
     if: needs.check-upstream.outputs.should_build == 'false'
@@ -268,11 +254,4 @@ jobs:
         run: |
           echo "## ⏭️ 构建已跳过" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "上游仓库无更新，跳过本次定时构建。" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 检测状态" >> $GITHUB_STEP_SUMMARY
-          echo "- MiroFish: ${{ needs.check-upstream.outputs.mirofish_changed == 'true' && '有更新' || '无变化' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- OpenZep: ${{ needs.check-upstream.outputs.openzep_changed == 'true' && '有更新' || '无变化' }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 下次检查" >> $GITHUB_STEP_SUMMARY
-          echo "- 下周日 02:00 UTC（北京时间 10:00）" >> $GITHUB_STEP_SUMMARY
+          echo "上游仓库无更新，跳过本次构建。" >> $GITHUB_STEP_SUMMARY
