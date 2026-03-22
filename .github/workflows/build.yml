@@ -38,6 +38,7 @@ jobs:
       openzep_sha: ${{ steps.check.outputs.openzep_sha }}
       mirofish_commits: ${{ steps.commits.outputs.mirofish }}
       openzep_commits: ${{ steps.commits.outputs.openzep }}
+      has_changes: ${{ steps.commits.outputs.has_changes }}
     steps:
       - name: Checkout this repo
         uses: actions/checkout@v4
@@ -80,24 +81,33 @@ jobs:
         run: |
           LAST_MIROFISH_SHA=$(jq -r '.mirofish.sha' .github/upstream-state.json)
           LAST_OPENZEP_SHA=$(jq -r '.openzep.sha' .github/upstream-state.json)
+          HAS_CHANGES="false"
           
           # Fetch MiroFish commits since last build
           if [ "${{ steps.check.outputs.mirofish_changed }}" == "true" ] && [ -n "$LAST_MIROFISH_SHA" ]; then
             MIROFISH_COMMITS=$(curl -s "https://api.github.com/repos/666ghj/MiroFish/compare/${LAST_MIROFISH_SHA}...main" | \
               jq -r '.commits[] | "- `\(.sha[:7])` - \(.commit.message | split("\n")[0])"' | head -10)
-            echo "mirofish<<EOF" >> $GITHUB_OUTPUT
-            echo "$MIROFISH_COMMITS" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            if [ -n "$MIROFISH_COMMITS" ]; then
+              echo "mirofish<<EOF" >> $GITHUB_OUTPUT
+              echo "$MIROFISH_COMMITS" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+              HAS_CHANGES="true"
+            fi
           fi
           
           # Fetch OpenZep commits since last build
           if [ "${{ steps.check.outputs.openzep_changed }}" == "true" ] && [ -n "$LAST_OPENZEP_SHA" ]; then
             OPENZEP_COMMITS=$(curl -s "https://api.github.com/repos/N1nEmAn/openzep/compare/${LAST_OPENZEP_SHA}...main" | \
               jq -r '.commits[] | "- `\(.sha[:7])` - \(.commit.message | split("\n")[0])"' | head -10)
-            echo "openzep<<EOF" >> $GITHUB_OUTPUT
-            echo "$OPENZEP_COMMITS" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            if [ -n "$OPENZEP_COMMITS" ]; then
+              echo "openzep<<EOF" >> $GITHUB_OUTPUT
+              echo "$OPENZEP_COMMITS" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+              HAS_CHANGES="true"
+            fi
           fi
+          
+          echo "has_changes=$HAS_CHANGES" >> $GITHUB_OUTPUT
 
   build:
     needs: check-upstream
@@ -123,6 +133,10 @@ jobs:
         with:
           repository: ${{ matrix.repo }}
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get upstream SHA
+        id: sha
+        run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -160,6 +174,14 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,scope=${{ matrix.name }},mode=max
 
+      - name: Show tags
+        run: |
+          echo "### ${{ matrix.name }} 镜像已推送" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
   update-state:
     needs: [check-upstream, build]
     if: success()
@@ -174,7 +196,6 @@ jobs:
 
       - name: Update upstream state file
         run: |
-          BUILD_TIME=$(date -u '+%Y-%m-%d')
           MIROFISH_DATE=$(curl -s "https://api.github.com/repos/666ghj/MiroFish/commits/main" | jq -r '.commit.committer.date')
           OPENZEP_DATE=$(curl -s "https://api.github.com/repos/N1nEmAn/openzep/commits/main" | jq -r '.commit.committer.date')
           
@@ -193,14 +214,14 @@ jobs:
           EOF
 
       - name: Update UPDATES.md
+        if: needs.check-upstream.outputs.has_changes == 'true'
         run: |
           BUILD_DATE=$(date -u '+%Y-%m-%d')
           MIROFISH_COMMITS="${{ needs.check-upstream.outputs.mirofish_commits }}"
           OPENZEP_COMMITS="${{ needs.check-upstream.outputs.openzep_commits }}"
           
           # Create new section
-          NEW_SECTION=""
-          NEW_SECTION+="## $BUILD_DATE\n\n"
+          NEW_SECTION="## $BUILD_DATE\n\n"
           
           if [ -n "$MIROFISH_COMMITS" ]; then
             NEW_SECTION+="### MiroFish\n\n"
@@ -214,13 +235,13 @@ jobs:
           
           NEW_SECTION+="---\n\n"
           
-          # Insert after header
+          # Update file
           if [ -f "UPDATES.md" ]; then
-            # Find the line after initial content (after first ---)
-            sed -i "1,/^---$/!{0,/^---$/s/^---$/---\n\n$(echo -e "$NEW_SECTION" | sed 's/[\/&]/\\&/g')/}" UPDATES.md 2>/dev/null || \
-            echo -e "$NEW_SECTION$(cat UPDATES.md)" > UPDATES.md
-          else
-            echo -e "# 更新日志\n\n本文件自动记录上游项目的更新。\n\n---\n\n$NEW_SECTION" > UPDATES.md
+            # Insert after header (after first --- line)
+            awk -v new="$NEW_SECTION" '
+              /^---$/ { print; if (++count == 1) { printf "%s", new }; next }
+              { print }
+            ' UPDATES.md > UPDATES.md.tmp && mv UPDATES.md.tmp UPDATES.md
           fi
 
       - name: Commit changes
@@ -228,7 +249,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .github/upstream-state.json UPDATES.md
-          git diff --quiet && git diff --staged --quiet || git commit -m "chore: update upstream state and UPDATES.md [skip ci]"
+          git diff --quiet && git diff --staged --quiet || git commit -m "chore: update upstream state [skip ci]"
           git push
 
   summary:
