@@ -126,9 +126,12 @@ jobs:
             MIROFISH_COMMITS=$(curl -s "https://api.github.com/repos/666ghj/MiroFish/compare/${LAST_MIROFISH_SHA}...main" | \
               jq -r '.commits[] | "- `\(.sha[:7])` - \(.commit.message | split("\n")[0])"' | head -10)
             if [ -n "$MIROFISH_COMMITS" ]; then
-              echo "mirofish<<EOF" >> $GITHUB_OUTPUT
-              echo "$MIROFISH_COMMITS" >> $GITHUB_OUTPUT
-              echo "EOF" >> $GITHUB_OUTPUT
+              # Use heredoc to safely handle multiline output
+              {
+                echo "mirofish<<MIROFISH_EOF"
+                echo "$MIROFISH_COMMITS"
+                echo "MIROFISH_EOF"
+              } >> $GITHUB_OUTPUT
               HAS_CHANGES="true"
             fi
           fi
@@ -137,9 +140,11 @@ jobs:
             OPENZEP_COMMITS=$(curl -s "https://api.github.com/repos/N1nEmAn/openzep/compare/${LAST_OPENZEP_SHA}...main" | \
               jq -r '.commits[] | "- `\(.sha[:7])` - \(.commit.message | split("\n")[0])"' | head -10)
             if [ -n "$OPENZEP_COMMITS" ]; then
-              echo "openzep<<EOF" >> $GITHUB_OUTPUT
-              echo "$OPENZEP_COMMITS" >> $GITHUB_OUTPUT
-              echo "EOF" >> $GITHUB_OUTPUT
+              {
+                echo "openzep<<OPENZEP_EOF"
+                echo "$OPENZEP_COMMITS"
+                echo "OPENZEP_EOF"
+              } >> $GITHUB_OUTPUT
               HAS_CHANGES="true"
             fi
           fi
@@ -258,10 +263,11 @@ jobs:
 
       - name: Update UPDATES.md
         if: needs.check-upstream.outputs.has_changes == 'true'
+        env:
+          MIROFISH_COMMITS: ${{ needs.check-upstream.outputs.mirofish_commits }}
+          OPENZEP_COMMITS: ${{ needs.check-upstream.outputs.openzep_commits }}
         run: |
           BUILD_DATE=$(date -u '+%Y-%m-%d')
-          MIROFISH_COMMITS="${{ needs.check-upstream.outputs.mirofish_commits }}"
-          OPENZEP_COMMITS="${{ needs.check-upstream.outputs.openzep_commits }}"
           
           # Create new section with proper newlines
           {
@@ -270,13 +276,13 @@ jobs:
             if [ -n "$MIROFISH_COMMITS" ]; then
               echo "### MiroFish"
               echo ""
-              echo "$MIROFISH_COMMITS"
+              printf '%s\n' "$MIROFISH_COMMITS"
               echo ""
             fi
             if [ -n "$OPENZEP_COMMITS" ]; then
               echo "### OpenZep"
               echo ""
-              echo "$OPENZEP_COMMITS"
+              printf '%s\n' "$OPENZEP_COMMITS"
               echo ""
             fi
             echo "---"
