@@ -3,6 +3,23 @@
 本文件自动记录上游项目的更新。
 
 ---
+## 2026-04-05
+
+### MiroFish
+
+- `7c7c7a2` - fix(deps): pin axios version to prevent potential supply chain risks
+- `c8a1bd5` - feat(i18n): add shared translation files and language registry
+- `2ffadd3` - feat(i18n): add Accept-Language header to all API requests
+- `0c18e1a` - feat(i18n): add backend translation utility with shared locale files
+- `22bf50f` - feat(i18n): set up vue-i18n with dynamic locale loading
+- `8f6110d` - feat(i18n): inject language instruction into LLM system prompts
+- `3d5e5d0` - feat(i18n): add language switcher component to navigation
+- `74f673a` - feat(i18n): replace hardcoded Chinese in backend API responses with t() calls
+- `7083382` - feat(i18n): replace hardcoded Chinese in frontend views with i18n calls
+- `fc47ae8` - feat(i18n): replace hardcoded Chinese in frontend components with i18n calls
+
+---
+
 
 ## 2026-03-20
 
