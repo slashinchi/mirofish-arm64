@@ -245,7 +245,7 @@ jobs:
             "mirofish": {
               "sha": "${{ needs.check-upstream.outputs.mirofish_sha }}",
               "updated_at": "$MIROFISH_DATE",
-              "version": "${{ needs.check-upstream.outputs.mirofish_output.mirofish_version }}"
+              "version": "${{ needs.check-upstream.outputs.mirofish_version }}"
             },
             "openzep": {
               "sha": "${{ needs.check-upstream.outputs.openzep_sha }}",
@@ -263,23 +263,36 @@ jobs:
           MIROFISH_COMMITS="${{ needs.check-upstream.outputs.mirofish_commits }}"
           OPENZEP_COMMITS="${{ needs.check-upstream.outputs.openzep_commits }}"
           
-          NEW_SECTION="## $BUILD_DATE\n\n"
-          
-          if [ -n "$MIROFISH_COMMITS" ]; then
-            NEW_SECTION+="### MiroFish\n\n"
-            NEW_SECTION+="$MIROFISH_COMMITS\n\n"
-          fi
-          
-          if [ -n "$OPENZEP_COMMITS" ]; then
-            NEW_SECTION+="### OpenZep\n\n"
-            NEW_SECTION+="$OPENZEP_COMMITS\n\n"
-          fi
-          
-          NEW_SECTION+="---\n\n"
+          # Create new section with proper newlines
+          {
+            echo "## $BUILD_DATE"
+            echo ""
+            if [ -n "$MIROFISH_COMMITS" ]; then
+              echo "### MiroFish"
+              echo ""
+              echo "$MIROFISH_COMMITS"
+              echo ""
+            fi
+            if [ -n "$OPENZEP_COMMITS" ]; then
+              echo "### OpenZep"
+              echo ""
+              echo "$OPENZEP_COMMITS"
+              echo ""
+            fi
+            echo "---"
+            echo ""
+          } > /tmp/new_section.txt
           
           if [ -f "UPDATES.md" ]; then
-            awk -v new="$NEW_SECTION" '
-              /^---$/ { print; if (++count == 1) { printf "%s", new }; next }
+            # Insert new section after first ---
+            awk '
+              /^---$/ { 
+                print; 
+                if (++count == 1) { 
+                  while ((getline line < "/tmp/new_section.txt") > 0) print line;
+                }
+                next 
+              }
               { print }
             ' UPDATES.md > UPDATES.md.tmp && mv UPDATES.md.tmp UPDATES.md
           fi
