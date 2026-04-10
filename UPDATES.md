@@ -3,6 +3,15 @@
 本文件自动记录上游项目的更新。
 
 ---
+## 2026-04-10
+
+### OpenZep
+
+- `697d71b` - Remove: .env.bak
+- `ea17d41` - Merge pull request #9 from Samge0/dev-patch-1
+
+---
+
 ## 2026-04-05
 
 ### MiroFish
