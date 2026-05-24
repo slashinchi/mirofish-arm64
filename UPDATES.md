@@ -3,6 +3,15 @@
 本文件自动记录上游项目的更新。
 
 ---
+## 2026-05-24
+
+### MiroFish
+
+- `faa1511` - docs(readme): fix typo in Shanda logo alt text
+- `db1bc14` - Merge pull request #641 from YunyueLi/docs/readme-polish
+
+---
+
 ## 2026-04-10
 
 ### OpenZep
