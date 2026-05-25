@@ -3,6 +3,16 @@
 本文件自动记录上游项目的更新。
 
 ---
+## 2026-05-25
+
+### MiroFish
+
+- `daec4b6` - refactor: add type hints and FileParser.is_supported() helper
+- `3f4d561` - fix(backend): constrain Python version to 3.11-3.12
+- `96096ea` - Merge pull request #640 from lllopic/fix/add-type-hints-and-helper-method
+
+---
+
 ## 2026-05-24
 
 ### MiroFish
