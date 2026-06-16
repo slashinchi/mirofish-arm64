@@ -3,6 +3,16 @@
 本文件自动记录上游项目的更新。
 
 ---
+## 2026-06-16
+
+### OpenZep
+
+- `17c91eb` - fix: address multiple open issues (#3,#4,#8,#11,#12,#13)
+- `b4452cf` - fix(codex-review): correct list-all storage model + harden secrets/auth
+- `46df38a` - fix: tighten schema-error classification + lengthen generated API key
+
+---
+
 ## 2026-05-25
 
 ### MiroFish
