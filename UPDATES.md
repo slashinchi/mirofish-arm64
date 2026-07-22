@@ -3,6 +3,14 @@
 本文件自动记录上游项目的更新。
 
 ---
+## 2026-07-22
+
+### MiroFish
+
+- `4ebb2ed` - feat: localize star history
+
+---
+
 ## 2026-06-16
 
 ### OpenZep
