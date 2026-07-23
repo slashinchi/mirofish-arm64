@@ -3,6 +3,23 @@
 本文件自动记录上游项目的更新。
 
 ---
+## 2026-07-23
+
+### MiroFish
+
+- `32fa3c8` - fix(api): remove duplicate to_dict() call in /api/graph/tasks
+- `e9cac5f` - fix(security): flask debug mode enabled by default, exposed on 0.0.0.0
+- `f0e936a` - fix: sample long text for ontology generation
+- `442d5fd` - fix: don't drop earlier user messages with same content from chat history
+- `e6a5021` - fix(frontend): show local date in history cards (not UTC)
+- `fe2fd5b` - fix: CVE-2025-14009 security vulnerability
+- `086f1fb` - Merge pull request #305: fix graph tasks endpoint crash
+- `cbfd03d` - Merge pull request #727: upgrade NLTK to 3.10.0
+- `231ec22` - Merge pull request #445: disable Flask debug mode by default
+- `fbdae29` - Merge pull request #720: keep history date and time in the same local timezone
+
+---
+
 ## 2026-07-22
 
 ### MiroFish

@@ -1,13 +1,13 @@
 {
   "mirofish": {
-    "sha": "4ebb2ed6e9d33e12b6c06e59789ca6a14cd74661",
-    "updated_at": "2026-07-21T07:46:53Z",
-    "version": "4ebb2ed"
+    "sha": "60757b3c825d577a1d7a86ab1ba6d5c21f51c261",
+    "updated_at": "2026-07-23T04:47:16Z",
+    "version": "60757b3"
   },
   "openzep": {
     "sha": "46df38ae49b7ffbd44196e142ac53e2b397ebdf2",
     "updated_at": "2026-06-15T11:17:33Z",
     "version": "46df38a"
   },
-  "last_build": "2026-07-22T05:28:22Z"
+  "last_build": "2026-07-23T05:29:42Z"
 }
