@@ -3,6 +3,16 @@
 本文件自动记录上游项目的更新。
 
 ---
+## 2026-08-04
+
+### MiroFish
+
+- `a97ba4f` - Fix automated Star History updates on protected main (#752)
+- `0f67b29` - fix: submit Star History updates as pull requests (#754)
+- `b5b53ac` - chore: update Star History (#755)
+
+---
+
 ## 2026-07-23
 
 ### MiroFish
