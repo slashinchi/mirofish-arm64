@@ -3,6 +3,14 @@
 本文件自动记录上游项目的更新。
 
 ---
+## 2026-09-03
+
+### MiroFish
+
+- `39d8491` - chore: update star history [skip ci] (#792)
+
+---
+
 ## 2026-08-18
 
 ### MiroFish
