@@ -3,6 +3,16 @@
 本文件自动记录上游项目的更新。
 
 ---
+## 2026-09-21
+
+### OpenZep
+
+- `3a8ec2a` - feat: implement Zep Cloud batch API compatibility
+- `55eeaf4` - test: cover batch ingestion lifecycle
+- `b68778d` - test: verify ontology labels and edge mappings
+
+---
+
 ## 2026-09-03
 
 ### MiroFish
