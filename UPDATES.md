@@ -3,6 +3,15 @@
 本文件自动记录上游项目的更新。
 
 ---
+## 2026-10-02
+
+### MiroFish
+
+- `14e7201` - chore: update Star History (#815)
+- `7657031` - chore: update Star History (#832)
+
+---
+
 ## 2026-09-21
 
 ### OpenZep
